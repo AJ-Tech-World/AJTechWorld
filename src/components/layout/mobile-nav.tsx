@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -15,22 +16,37 @@ interface MobileNavProps {
 export function MobileNav({ isOpen, onClose }: MobileNavProps) {
   const pathname = usePathname();
 
-  // Close drawer on route change or ESC key
+  // Close menu when the route changes.
   useEffect(() => {
     onClose();
-  }, [pathname]);
+  }, [pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Lock background scrolling and handle Escape.
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+    if (!isOpen) return;
+
+    const body = document.body;
+    const html = document.documentElement;
+
+    const previousBodyOverflow = body.style.overflow;
+    const previousHtmlOverflow = html.style.overflow;
+
+    body.style.overflow = "hidden";
+    html.style.overflow = "hidden";
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
     };
-    if (isOpen) {
-      window.addEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = "hidden";
-    }
+
+    window.addEventListener("keydown", handleKeyDown);
+
     return () => {
+      body.style.overflow = previousBodyOverflow;
+      html.style.overflow = previousHtmlOverflow;
+
       window.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = "auto";
     };
   }, [isOpen, onClose]);
 
@@ -42,53 +58,72 @@ export function MobileNav({ isOpen, onClose }: MobileNavProps) {
     { name: "Contact", href: "/contact" },
   ];
 
-  return (
+  // Avoid rendering the portal before the browser is available.
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Backdrop */}
+          {/* Full-screen blurred backdrop */}
           <motion.div
+            key="mobile-nav-backdrop"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 bg-black/40 backdrop-blur-xs z-50 lg:hidden"
+            className="fixed inset-0 z-[9998] bg-black/40 backdrop-blur-md lg:hidden"
             onClick={onClose}
             aria-hidden="true"
           />
 
-          {/* Drawer Panel */}
-          <motion.div
+          {/* Fixed navigation drawer */}
+          <motion.aside
+            key="mobile-nav-drawer"
             initial={{ x: "100%" }}
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
-            transition={{ type: "spring", damping: 25, stiffness: 250 }}
-            className="fixed top-0 right-0 bottom-0 w-full max-w-sm bg-white z-50 flex flex-col shadow-2xl lg:hidden border-l border-gray-100"
+            transition={{
+              type: "spring",
+              damping: 28,
+              stiffness: 260,
+            }}
+            className="fixed inset-y-0 right-0 z-[9999] flex h-dvh w-[85%] max-w-sm flex-col overflow-hidden border-l border-gray-200 bg-white shadow-2xl lg:hidden"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Mobile navigation"
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+            <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-6 py-4">
               <Logo />
+
               <button
+                type="button"
                 onClick={onClose}
-                className="p-2 rounded-full hover:bg-gray-100 text-gray-700 transition-colors"
+                className="rounded-full p-2 text-gray-700 transition-colors hover:bg-gray-100"
                 aria-label="Close menu"
               >
-                <X className="w-5 h-5" />
+                <X className="h-5 w-5" />
               </button>
             </div>
 
-            {/* Navigation Links */}
-            <div className="flex-1 px-6 py-8 flex flex-col gap-6 overflow-y-auto">
+            {/* Navigation links */}
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-6 py-6">
               <nav className="flex flex-col gap-2">
                 {navLinks.map((link) => {
                   const isActive = pathname === link.href;
+
                   return (
                     <Link
                       key={link.name}
                       href={link.href}
-                      className={`text-lg font-medium px-4 py-3 rounded-xl transition-colors ${
+                      onClick={onClose}
+                      aria-current={isActive ? "page" : undefined}
+                      className={`rounded-xl px-4 py-3 text-base transition-colors ${
                         isActive
-                          ? "bg-blue-50 text-blue-600 font-semibold"
+                          ? "bg-blue-50 font-semibold text-blue-600"
                           : "text-gray-700 hover:bg-gray-50 hover:text-gray-900"
                       }`}
                     >
@@ -98,23 +133,26 @@ export function MobileNav({ isOpen, onClose }: MobileNavProps) {
                 })}
               </nav>
 
-              <div className="mt-auto pt-6 border-t border-gray-100 flex flex-col gap-4">
+              {/* Bottom action */}
+              <div className="mt-auto flex flex-col gap-4 border-t border-gray-100 pt-6">
                 <Link
                   href="/contact"
-                  className="w-full bg-[#0B1220] hover:bg-gray-800 text-white font-medium py-3.5 px-6 rounded-xl flex items-center justify-center gap-2 shadow-sm transition-colors text-center"
+                  onClick={onClose}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#0B1220] px-6 py-3.5 text-center font-medium text-white transition-colors hover:bg-gray-800"
                 >
                   <span>Start a Project</span>
-                  <ArrowRight className="w-4 h-4" />
+                  <ArrowRight className="h-4 w-4" />
                 </Link>
-                <div className="text-center text-xs text-gray-400">
-                  © 2026 AJ Tech World. All rights
-                  reserved.
-                </div>
+
+                <p className="text-center text-xs text-gray-400">
+                  © 2026 AJ Tech World. All rights reserved.
+                </p>
               </div>
             </div>
-          </motion.div>
+          </motion.aside>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }
